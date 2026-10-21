@@ -1,5 +1,5 @@
 {
-    "name": "n8n-nodes-umuapp",
+    "name": "@notmrmario/n8n-nodes-umuapp",
     "version": "0.2.0",
     "description": "Nodos de n8n para UMUApp (Universidad de Murcia): trigger de tareas, calificaciones, exámenes, anuncios y calendario",
     "license": "MIT",
