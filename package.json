@@ -1,6 +1,6 @@
 {
     "name": "@notmrmario/n8n-nodes-umuapp",
-    "version": "0.3.2",
+    "version": "0.4.0",
     "description": "Nodos de n8n para UMUApp (Universidad de Murcia): trigger de tareas, calificaciones, exámenes, anuncios y calendario",
     "license": "MIT",
     "homepage": "",
@@ -15,16 +15,16 @@
         "type": "git",
         "url": "https://github.com/notmrmario/n8n-nodes-umuapp.git"
     },
-   "scripts": {
-		"build": "n8n-node build",
-		"build:watch": "tsc --watch",
-		"test": "n8n-node build && node test/changes.js && node test/task.js",
-		"dev": "n8n-node dev",
-		"lint": "n8n-node lint",
-		"lint:fix": "n8n-node lint --fix",
-		"release": "n8n-node release",
-		"prepublishOnly": "n8n-node prerelease"
-	},
+    "scripts": {
+        "build": "n8n-node build",
+        "build:watch": "tsc --watch",
+        "test": "n8n-node build && node test/changes.js && node test/task.js",
+        "dev": "n8n-node dev",
+        "lint": "n8n-node lint",
+        "lint:fix": "n8n-node lint --fix",
+        "release": "n8n-node release",
+        "prepublishOnly": "n8n-node prerelease"
+    },
     "files": [
         "dist"
     ],
