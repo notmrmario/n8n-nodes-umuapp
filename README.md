@@ -10,6 +10,24 @@ Nodos de n8n para UMUApp (Universidad de Murcia): **UMUApp** (consultas) y **UMU
 
 La sesión se abre con el flujo de tickets CAS de los WebViews (`POST /cas/v1/tickets` → ticket de servicio → cookie `JSESSIONID`) y se renueva sola. **Probado solo con servidores simulados.** Si falla el login: rellena el *Token de aplicación* en la credencial (el CAS exige la cabecera `UMUapp-Authentication-Token`, que es una constante de la app y no el `access_token` de ningún login) o cambia la *URL del servicio* (por defecto `https://aulavirtual.um.es/sakai-login-tool/container`, es una suposición). Cada error indica el paso (TGT, ST, canje, comprobar sesión, consulta) y el destino. Si ves «la conexión se cerró inesperadamente», rellena el *Token de aplicación* (obligatorio: sin él el CAS corta la conexión) y, si sigue, el *User-Agent* con el de tu navegador.
 
+## Anuncios y otras consultas de Aula Virtual
+
+- **Anuncio (Aula Virtual):** *Get Many* (todas tus asignaturas), *Obtener de un sitio* y *Obtener* (pega la referencia `/announcement/msg/{sitio}/{canal}/{id}` o el enlace de la alerta). Máximo de anuncios y días hacia atrás configurables (Sakai devuelve solo 3 anuncios de los últimos 10 días si no se indica).
+- **Petición (Aula Virtual):** GET a cualquier ruta del Aula Virtual. Sirve para explorar: `/direct/describe` lista los *entity providers* que tiene activos la UM.
+- **Trigger → Anuncio De Aula Virtual Nuevo:** avisa de anuncios nuevos con el texto completo y los adjuntos.
+
+Otras entidades del Aula Virtual de la UM (según su `/direct/describe`):
+
+| Recurso del nodo | Entidad | Notas |
+|---|---|---|
+| Calendario (Aula Virtual) | `calendar/my`, `calendar/site/{sitio}` | filtros `firstDate`/`lastDate`; bloque `googleCalendar` |
+| Examen (Aula Virtual) | `sam_pub` | Tests y cuestionarios; los campos no están descritos, se devuelve también el objeto original |
+| Foro (Aula Virtual) | `forums/site/…` | foros → temas → conversaciones |
+| Archivo de correo (Aula Virtual) | `mailarchive/siteMessages/{sitio}` | correos a la lista de la asignatura |
+| Mensajes privados → contadores | `synopticmsgcntritem` | **solo cuántos nuevos**, no el texto |
+
+**Mensajes privados (texto):** no hay ninguna entidad que los devuelva; para leerlos haría falta el HTML de la herramienta Mensajes. **Calificaciones:** la entidad `gradebook` no está activa (solo `gbng`, sin lectura de notas); la nota de una tarea hay que buscarla en `assignment` (`submissions`, `getGrade`, `itemSubmission`), cuyos parámetros no están descritos.
+
 ## UMUApp Trigger
 
 Eventos seleccionables: alertas, eventos de calendario, tareas nuevas y **tareas modificadas**.
@@ -38,6 +56,6 @@ La primera ejecución solo memoriza el estado (no emite). Si un sitio falla en u
 ```bash
 npm install
 npm run dev     # n8n local con recarga
-npm test        # compila y ejecuta test/changes.js y test/task.js (APIs simuladas)
+npm test        # compila y ejecuta las pruebas de test/ (APIs simuladas)
 npm run lint
 ```

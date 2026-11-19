@@ -1,7 +1,19 @@
 import { IDataObject, IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription, NodeConnectionTypes, NodeOperationError } from "n8n-workflow";
 import { getEndpoint } from "./login";
 import { extractList, formatUmQuery, normalizeTask } from "./functions";
-import { matchesAssignment, normalizeSakaiAssignment, parseAssignmentId, sakaiList } from "./sakai";
+import {
+    matchesAnnouncement,
+    matchesAssignment,
+    normalizeSakaiAnnouncement,
+    normalizeSakaiAssignment,
+    normalizeSakaiCalendarEvent,
+    normalizeSakaiExam,
+    normalizeSakaiMail,
+    normalizeSakaiMessageCounts,
+    parseAnnouncementRef,
+    parseAssignmentId,
+    sakaiList,
+} from "./sakai";
 import { aulaGet, getWebSession } from "./webview";
 
 export class Umuapp implements INodeType {
@@ -28,10 +40,224 @@ export class Umuapp implements INodeType {
                 default: "calendar",
                 options: [
                     { name: "Alerta", value: "alert" },
+                    { name: "Anuncio (Aula Virtual)", value: "avAnnouncement" },
+                    { name: "Archivo De Correo (Aula Virtual)", value: "avMail" },
                     { name: "Asignatura", value: "subject" },
                     { name: "Calendario", value: "calendar" },
+                    { name: "Calendario (Aula Virtual)", value: "avCalendar" },
+                    { name: "Examen (Aula Virtual)", value: "avExam" },
+                    { name: "Foro (Aula Virtual)", value: "avForum" },
+                    { name: "Mensajes Privados (Aula Virtual)", value: "avMessages" },
+                    { name: "Petición (Aula Virtual)", value: "avRequest" },
                     { name: "Tarea (Aula Virtual)", value: "task" },
                 ],
+            },
+
+            // ---- Anuncios de Aula Virtual (Sakai) ----------------------------------
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avAnnouncement"] } },
+                default: "getAll",
+                options: [
+                    {
+                        name: "Get Many",
+                        value: "getAll",
+                        action: "Get many anuncios de aula virtual",
+                        description: "Tus anuncios recientes de todas las asignaturas",
+                    },
+                    {
+                        name: "Obtener",
+                        value: "get",
+                        action: "Obtener un anuncio de aula virtual",
+                        description: "Un anuncio concreto a partir de su referencia o del enlace de la alerta",
+                    },
+                    {
+                        name: "Obtener De Un Sitio",
+                        value: "getSite",
+                        action: "Obtener anuncios de un sitio",
+                    },
+                ],
+            },
+            {
+                displayName: "Referencia Del Anuncio",
+                name: "announcementRef",
+                type: "string",
+                default: "",
+                required: true,
+                placeholder: "/announcement/msg/1898_G_2026_N_N/main/abc123",
+                description:
+                    "Referencia /announcement/msg/{sitio}/{canal}/{identificador}, o el enlace referencia_web de una alerta de anuncio, o {sitio}/{identificador}",
+                displayOptions: { show: { resource: ["avAnnouncement"], operation: ["get"] } },
+            },
+            {
+                displayName: "Sitio",
+                name: "avSiteId",
+                type: "string",
+                default: "",
+                required: true,
+                placeholder: "1898_G_2026_N_N",
+                description: "Es el campo sitio_av de la asignatura",
+                displayOptions: { show: { resource: ["avAnnouncement", "avCalendar", "avForum", "avMail"], operation: ["getSite"] } },
+            },
+            {
+                displayName: "Máximo De Anuncios",
+                name: "avLimit",
+                type: "number",
+                typeOptions: { minValue: 1 },
+                default: 20,
+                description: "Max number of announcements to return",
+                displayOptions: { show: { resource: ["avAnnouncement"], operation: ["getAll", "getSite"] } },
+            },
+            {
+                displayName: "Días Hacia Atrás",
+                name: "avDays",
+                type: "number",
+                typeOptions: { minValue: 1 },
+                default: 30,
+                description: "How many days back to look for announcements",
+                displayOptions: { show: { resource: ["avAnnouncement"], operation: ["getAll", "getSite"] } },
+            },
+
+
+            // ---- Otras entidades de Aula Virtual (Sakai) ----------------------------
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avCalendar"] } },
+                default: "getAll",
+                options: [
+                    { name: "Get Many", value: "getAll", action: "Get many eventos del calendario de aula virtual", description: "Eventos de todos tus calendarios (entidad calendar/my)" },
+                    { name: "Obtener De Un Sitio", value: "getSite", action: "Obtener eventos del calendario de un sitio" },
+                ],
+            },
+            {
+                displayName: "Desde (AAAA-MM-DD)",
+                name: "avFirstDate",
+                type: "string",
+                default: "",
+                placeholder: "2026-11-01",
+                description: "Filtra desde esta fecha (opcional)",
+                displayOptions: { show: { resource: ["avCalendar"] } },
+            },
+            {
+                displayName: "Hasta (AAAA-MM-DD)",
+                name: "avLastDate",
+                type: "string",
+                default: "",
+                placeholder: "2026-12-31",
+                description: "Filtra hasta esta fecha (opcional)",
+                displayOptions: { show: { resource: ["avCalendar"] } },
+            },
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avExam"] } },
+                default: "getAll",
+                options: [
+                    {
+                        name: "Get Many",
+                        value: "getAll",
+                        action: "Get many examenes de aula virtual",
+                        description: "Evaluaciones publicadas en Tests y cuestionarios (entidad sam_pub)",
+                    },
+                ],
+            },
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avForum"] } },
+                default: "getSite",
+                options: [
+                    {
+                        name: "Obtener De Un Sitio",
+                        value: "getSite",
+                        action: "Obtener foros de un sitio",
+                        description: "Foros del sitio; con foro y tema rellenos, baja un nivel cada vez",
+                    },
+                ],
+            },
+            {
+                displayName: "ID Del Foro (Opcional)",
+                name: "avForumId",
+                type: "string",
+                default: "",
+                description: "Con el foro se obtienen sus temas",
+                displayOptions: { show: { resource: ["avForum"] } },
+            },
+            {
+                displayName: "ID Del Tema (Opcional)",
+                name: "avTopicId",
+                type: "string",
+                default: "",
+                description: "Con foro y tema se obtienen sus conversaciones",
+                displayOptions: { show: { resource: ["avForum"] } },
+            },
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avMail"] } },
+                default: "getSite",
+                options: [
+                    {
+                        name: "Obtener De Un Sitio",
+                        value: "getSite",
+                        action: "Obtener mensajes del archivo de correo de un sitio",
+                        description: "Correos enviados a la lista de la asignatura (entidad mailarchive)",
+                    },
+                ],
+            },
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avMessages"] } },
+                default: "getCounts",
+                options: [
+                    {
+                        name: "Obtener Contadores",
+                        value: "getCounts",
+                        action: "Obtener los contadores de mensajes privados nuevos",
+                        description: "Cuántos mensajes privados y de foro nuevos tienes por sitio. No trae el texto de los mensajes.",
+                    },
+                ],
+            },
+
+            // ---- Petición libre a Aula Virtual -------------------------------------
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avRequest"] } },
+                default: "get",
+                options: [
+                    {
+                        name: "GET",
+                        value: "get",
+                        action: "Hacer un get autenticado al aula virtual",
+                        description: "Para explorar endpoints (por ejemplo /direct/describe lista los que tiene activos Sakai)",
+                    },
+                ],
+            },
+            {
+                displayName: "Ruta",
+                name: "avPath",
+                type: "string",
+                default: "/direct/describe",
+                description: "Ruta bajo la URL de Aula Virtual, o una URL completa de aulavirtual.um.es",
+                displayOptions: { show: { resource: ["avRequest"] } },
             },
 
             // ---- Tareas de Aula Virtual (Sakai) ----------------------------------
@@ -245,8 +471,8 @@ export class Umuapp implements INodeType {
                 description: "Whether to return normalised fields (ISO dates, googleCalendar block) plus the raw object",
                 displayOptions: {
                     show: {
-                        resource: ["calendar", "alert", "subject", "task"],
-                        operation: ["getAll", "get", "getTasks", "getAllTasks"],
+                        resource: ["calendar", "alert", "subject", "task", "avAnnouncement", "avCalendar", "avExam", "avMail", "avMessages"],
+                        operation: ["getAll", "get", "getTasks", "getAllTasks", "getSite", "getCounts"],
                     },
                 },
             },
@@ -265,7 +491,106 @@ export class Umuapp implements INodeType {
             const push = (json: IDataObject) => out.push({ json, pairedItem: i });
 
             try {
-                if (resource === "task" && operation === "getAll") {
+                if (resource === "avAnnouncement") {
+                    const { base } = await getWebSession(this);
+                    const q = (path: string) =>
+                        aulaGet(this, path, {
+                            n: this.getNodeParameter("avLimit", i, 20) as number,
+                            d: this.getNodeParameter("avDays", i, 30) as number,
+                        });
+                    const emit = (a: IDataObject) => push(simplify ? normalizeSakaiAnnouncement(a, base) : a);
+                    const jsonOk = (r: { isJson: boolean; statusCode: number }) => r.isJson && r.statusCode < 400;
+
+                    if (operation === "getAll" || operation === "getSite") {
+                        let path = "/direct/announcement/user.json";
+                        if (operation === "getSite") {
+                            const site = (this.getNodeParameter("avSiteId", i) as string).trim();
+                            if (!site) throw new NodeOperationError(this.getNode(), "Indica el sitio", { itemIndex: i });
+                            path = `/direct/announcement/site/${encodeURIComponent(site)}.json`;
+                        }
+                        const res = await q(path);
+                        if (!jsonOk(res))
+                            throw new NodeOperationError(this.getNode(), `Aula Virtual respondió HTTP ${res.statusCode} sin JSON en ${path}`, { itemIndex: i });
+                        for (const a of sakaiList(res.data)) emit(a);
+                    } else if (operation === "get") {
+                        const ref = parseAnnouncementRef(this.getNodeParameter("announcementRef", i) as string);
+                        if (!ref) throw new NodeOperationError(this.getNode(), "No reconozco la referencia del anuncio. Usa /announcement/msg/{sitio}/{canal}/{identificador} o el enlace de la alerta", { itemIndex: i });
+                        const enc = (v: string) => encodeURIComponent(v);
+                        let found: IDataObject | undefined;
+                        // 1) por su ruta interna, 2) por sitio+id, 3) buscándolo entre los anuncios del sitio.
+                        for (const path of [
+                            `/direct/announcement/msg/${enc(ref.site)}/${enc(ref.channel)}/${enc(ref.id)}.json`,
+                            `/direct/announcement/message/${enc(ref.site)}/${enc(ref.id)}.json`,
+                        ]) {
+                            const r = await aulaGet(this, path);
+                            if (jsonOk(r) && r.data && typeof r.data === "object") {
+                                const d = r.data as IDataObject;
+                                found = matchesAnnouncement(d, ref) || d.title !== undefined ? d : sakaiList(d).find((a) => matchesAnnouncement(a, ref));
+                                if (found) break;
+                            }
+                        }
+                        if (!found) {
+                            const r = await aulaGet(this, `/direct/announcement/site/${enc(ref.site)}.json`, { n: 200, d: 3650 });
+                            if (jsonOk(r)) found = sakaiList(r.data).find((a) => matchesAnnouncement(a, ref));
+                        }
+                        if (!found) throw new NodeOperationError(this.getNode(), `No se encontró el anuncio ${ref.site}/${ref.id}`, { itemIndex: i });
+                        emit(found);
+                    }
+                } else if (resource === "avCalendar" || resource === "avExam" || resource === "avForum" || resource === "avMail" || resource === "avMessages") {
+                    const { base } = await getWebSession(this);
+                    const enc = (v: string) => encodeURIComponent(v);
+                    const fetchJson = async (path: string, query: Record<string, string> = {}) => {
+                        const r = await aulaGet(this, path, query);
+                        if (!r.isJson || r.statusCode >= 400)
+                            throw new NodeOperationError(this.getNode(), `Aula Virtual respondió HTTP ${r.statusCode} sin JSON en ${path}`, { itemIndex: i });
+                        return r.data;
+                    };
+                    const wholeOrList = (d: unknown): IDataObject[] => {
+                        const l = sakaiList(d);
+                        if (l.length || !d || typeof d !== "object" || Array.isArray(d)) return l;
+                        // Una colección vacía es una lista vacía; cualquier otro objeto es un único elemento.
+                        return Object.keys(d).some((k) => /_collection$/.test(k)) ? [] : [d as IDataObject];
+                    };
+                    const site = (): string => {
+                        const v = (this.getNodeParameter("avSiteId", i) as string).trim();
+                        if (!v) throw new NodeOperationError(this.getNode(), "Indica el sitio", { itemIndex: i });
+                        return v;
+                    };
+
+                    if (resource === "avCalendar") {
+                        const query: Record<string, string> = {};
+                        const from = (this.getNodeParameter("avFirstDate", i, "") as string).trim();
+                        const to = (this.getNodeParameter("avLastDate", i, "") as string).trim();
+                        if (from) query.firstDate = from;
+                        if (to) query.lastDate = to;
+                        const path = operation === "getSite" ? `/direct/calendar/site/${enc(site())}.json` : "/direct/calendar/my.json";
+                        for (const e of wholeOrList(await fetchJson(path, query))) push(simplify ? normalizeSakaiCalendarEvent(e, base) : e);
+                    } else if (resource === "avExam") {
+                        for (const e of wholeOrList(await fetchJson("/direct/sam_pub.json"))) push(simplify ? normalizeSakaiExam(e, "") : e);
+                    } else if (resource === "avForum") {
+                        const siteId = site();
+                        const forum = (this.getNodeParameter("avForumId", i, "") as string).trim();
+                        const topic = (this.getNodeParameter("avTopicId", i, "") as string).trim();
+                        let path = `/direct/forums/site/${enc(siteId)}.json`;
+                        if (forum) path = `/direct/forums/site/${enc(siteId)}/forum/${enc(forum)}.json`;
+                        if (forum && topic) path = `/direct/forums/site/${enc(siteId)}/forum/${enc(forum)}/topic/${enc(topic)}.json`;
+                        for (const e of wholeOrList(await fetchJson(path))) push(e);
+                    } else if (resource === "avMail") {
+                        const siteId = site();
+                        for (const m of wholeOrList(await fetchJson(`/direct/mailarchive/siteMessages/${enc(siteId)}.json`)))
+                            push(simplify ? normalizeSakaiMail(m, siteId) : m);
+                    } else {
+                        for (const c of wholeOrList(await fetchJson("/direct/synopticmsgcntritem.json")))
+                            push(simplify ? normalizeSakaiMessageCounts(c) : c);
+                    }
+                } else if (resource === "avRequest") {
+                    const res = await aulaGet(this, this.getNodeParameter("avPath", i) as string);
+                    push({
+                        statusCode: res.statusCode,
+                        url: res.url,
+                        data: res.isJson ? (res.data as IDataObject) : String(res.data).slice(0, 20000),
+                    });
+                } else if (resource === "task" && operation === "getAll") {
                     const { base } = await getWebSession(this);
                     const res = await aulaGet(this, "/direct/assignment/my.json");
                     if (!res.isJson || res.statusCode >= 400)

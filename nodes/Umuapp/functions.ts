@@ -139,7 +139,7 @@ export function collectSiteIds(node: unknown, out = new Set<string>()): string[]
 // Clasificación de eventos
 // ---------------------------------------------------------------------------
 
-export type EventType = 'alert' | 'announcement' | 'exam' | 'task' | 'taskChanged' | 'grade' | 'calendarEvent';
+export type EventType = 'alert' | 'announcement' | 'announcementAv' | 'exam' | 'task' | 'taskChanged' | 'grade' | 'calendarEvent';
 
 export interface Rules {
     exam: RegExp;

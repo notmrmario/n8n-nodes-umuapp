@@ -116,5 +116,14 @@ const task = (id, extra = {}) => ({ id_tarea: id, titulo: 'T' + id, instruccione
     const cmp = compareTasks(big, many, { ignore: [], now: 1, maxEntries: 10 });
     assert.strictEqual(Object.keys(cmp.next).length, 10);
 
+    // prueba manual: número de elementos configurable y orden por fecha real (02/11 es posterior a 21/10)
+    tasksBySite = { [S1]: [task(1, { fecha_inicio: '21/10/2026 09:00' }), task(2, { fecha_inicio: '02/11/2026 09:00' }), task(3, { fecha_inicio: '15/09/2026 09:00' }), task(4, { fecha_inicio: '30/10/2026 09:00' })], [S2]: [] };
+    r = await poll({ events: ['task'], options: { testItems: 3 } }, {}, 'manual');
+    assert.deepStrictEqual(r[0].map((x) => x.json.id), [2, 4, 1]);
+    r = await poll({ events: ['task'], options: {} }, {}, 'manual');
+    assert.strictEqual(r[0].length, 4, 'por defecto 5 como máximo: aquí solo hay 4');
+    r = await poll({ events: ['task'], options: { testItems: 1 } }, {}, 'manual');
+    assert.deepStrictEqual(r[0].map((x) => x.json.id), [2]);
+
     console.log('changes.js OK');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -5,11 +5,13 @@ import type {
     INodeTypeDescription,
     IPollFunctions,
 } from 'n8n-workflow';
-import { NodeConnectionTypes } from 'n8n-workflow';
-import { EventType, formatUmQuery, normalizeTask } from './functions';
+import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { EventType, formatUmQuery, normalizeTask, toIsoMadrid } from './functions';
 import { getEndpoint } from './login';
+import { normalizeSakaiAnnouncement, sakaiList } from './sakai';
 import { compareTasks, fetchAllTasks, StoredTask, taskKey } from './tasks';
 import { Alert, CalendarEvent } from './types';
+import { aulaGet, getWebSession } from './webview';
 
 const MAX_CACHED = 500;
 const MAX_TASKS = 2000;
@@ -25,13 +27,39 @@ interface PollState {
     tasksInitialized?: boolean;
 }
 
+/** Fecha dd/MM/yyyy HH:mm[:ss] (hora de Madrid) -> ISO UTC ordenable (como texto, «02/11» iría antes que «21/10»). */
+const sortKey = (v: unknown): string => {
+    const iso = toIsoMadrid(v);
+    return iso ? new Date(iso).toISOString() : '';
+};
+
+/** Del más específico al más general: «Anuncio modificado» no debe contar como «Anuncio». */
+const ALERT_HEADS = [
+    'anuncio modificado',
+    'anuncio',
+    'anulación de llamamiento',
+    'llamamiento',
+    'examen',
+    'tarea modificada',
+    'tarea',
+    'asignatura calificada',
+    'mensaje',
+];
+const alertKind = (titulo: string): string | undefined => {
+    const t = titulo.toLowerCase();
+    return ALERT_HEADS.filter((h) => t.startsWith(h)).sort((a, b) => b.length - a.length)[0];
+};
+
 type AlertType =
     | "anuncio"
     | "anuncioMod"
     | "examen"
     | "llamamiento"
     | "llamamientoAnulado"
-    | "tarea";
+    | "tarea"
+    | "tarea modificada"
+    | "asignatura calificada"
+    | "mensaje";
 
 type CalendarEvtType =
     | "clase"
@@ -66,6 +94,11 @@ export class UmuappTrigger implements INodeType {
                         name: 'Alerta',
                         value: 'alert',
                         description: 'Cualquier alerta/aviso de Notimovil (SIVA, Aula Virtual, etc.)',
+                    },
+                    {
+                        name: 'Anuncio De Aula Virtual Nuevo',
+                        value: 'announcementAv',
+                        description: 'Anuncios nuevos del Aula Virtual con el texto completo y los adjuntos (usa /direct/announcement/user)',
                     },
                     {
                         name: 'Evento De Calendario Nuevo',
@@ -126,6 +159,10 @@ export class UmuappTrigger implements INodeType {
                         value: "anuncio modificado"
                     },
                     {
+                        name: "Asignatura Calificada",
+                        value: "asignatura calificada"
+                    },
+                    {
                         name: "Examen",
                         value: "examen"
                     },
@@ -138,8 +175,16 @@ export class UmuappTrigger implements INodeType {
                         value: "anulación de llamamiento"
                     },
                     {
+                        name: "Mensaje",
+                        value: "mensaje"
+                    },
+                    {
                         name: "Tarea",
                         value: "tarea"
+                    },
+                    {
+                        name: "Tarea Modificada",
+                        value: "tarea modificada"
                     },
                 ]
             },
@@ -166,10 +211,25 @@ export class UmuappTrigger implements INodeType {
                             'Campos (separados por comas) que no cuentan como cambio al comparar tareas. Por defecto se ignora el estado (abierta/vencida/cerrada) porque cambia sola con el tiempo; quítalo de la lista si quieres que avise cuando una tarea se cierre. Admite rutas como «entrega.nota».',
                     },
                     {
+                        displayName: 'Días Hacia Atrás (Anuncios De Aula Virtual)',
+                        name: 'avAnnouncementDays',
+                        type: 'number',
+                        typeOptions: { minValue: 1 },
+                        default: 30,
+                    },
+                    {
                         displayName: 'Días Por Delante (Calendario)',
                         name: 'daysAhead',
                         type: 'number',
                         default: 60,
+                    },
+                    {
+                        displayName: 'Elementos En La Prueba Manual',
+                        name: 'testItems',
+                        type: 'number',
+                        typeOptions: { minValue: 1 },
+                        default: 5,
+                        description: 'Max number of items to return with «Fetch Test Event» (the most recent ones)',
                     },
                     {
                         displayName: 'Emitir También Lo Existente En La Primera Ejecución',
@@ -185,6 +245,13 @@ export class UmuappTrigger implements INodeType {
                         type: 'boolean',
                         default: false,
                         description: 'Whether to include holidays in the calendar query',
+                    },
+                    {
+                        displayName: 'Máx. Anuncios De Aula Virtual',
+                        name: 'avMaxAnnouncements',
+                        type: 'number',
+                        typeOptions: { minValue: 1 },
+                        default: 50,
                     },
                     {
                         displayName: 'Máx. Eventos De Calendario',
@@ -226,11 +293,12 @@ export class UmuappTrigger implements INodeType {
             });
             const alerts = body.body.datos as Alert[];
             for (const alert of alerts) {
-                if ((alertTypes.length && alertTypes.some(t => alert.titulo.toLowerCase().startsWith(t))) || !alertTypes.length) {
+                const kind = alertKind(alert.titulo);
+                if (!alertTypes.length || (kind !== undefined && (alertTypes as string[]).includes(kind))) {
                     candidates.push({
                         key: `alert:${alert.codigo_alerta}`,
                         item: alert,
-                        sortDate: String(alert.fecha_envio)
+                        sortDate: sortKey(alert.fecha_envio)
                     });
                 }
             }
@@ -259,8 +327,28 @@ export class UmuappTrigger implements INodeType {
                     candidates.push({
                         key: `cal:${event.id}`,
                         item: event,
-                        sortDate: String(event.inicio)
+                        sortDate: sortKey(event.inicio)
                     });
+            }
+        }
+
+        if (selected.includes('announcementAv')) {
+            const { base } = await getWebSession(this);
+            const path = '/direct/announcement/user.json';
+            const res = await aulaGet(this, path, {
+                n: Number(options.avMaxAnnouncements ?? 50),
+                d: Number(options.avAnnouncementDays ?? 30),
+            });
+            if (!res.isJson || res.statusCode >= 400) {
+                throw new NodeOperationError(this.getNode(), `Aula Virtual respondió HTTP ${res.statusCode} sin JSON en ${path}`);
+            }
+            for (const a of sakaiList(res.data)) {
+                const item = normalizeSakaiAnnouncement(a, base);
+                candidates.push({
+                    key: `avann:${String(a.id ?? a.announcementId ?? `${a.siteId}/${a.title}`)}`,
+                    item,
+                    sortDate: typeof item.creadoEn === 'string' ? new Date(item.creadoEn).toISOString() : '',
+                });
             }
         }
 
@@ -283,7 +371,7 @@ export class UmuappTrigger implements INodeType {
                     candidates.push({
                         key: c.key,
                         item: normalizeTask(c.task, c.siteId, 'task'),
-                        sortDate: String(c.task.fecha_inicio ?? ''),
+                        sortDate: sortKey(c.task.fecha_inicio),
                     });
                 }
             } else {
@@ -298,7 +386,7 @@ export class UmuappTrigger implements INodeType {
                     for (const c of taskResult.added) {
                         taskExtra.push({
                             item: normalizeTask(c.task, siteOf.get(c.key) ?? '', 'task'),
-                            sortDate: String(c.task.fecha_inicio ?? ''),
+                            sortDate: sortKey(c.task.fecha_inicio),
                         });
                     }
                 }
@@ -322,7 +410,8 @@ export class UmuappTrigger implements INodeType {
 
         if (isManual) {
             // Prueba manual: devolvemos lo más reciente para poder ver la estructura.
-            const sample = all.sort((a, b) => b.sortDate.localeCompare(a.sortDate)).slice(0, 5);
+            const testItems = Math.max(1, Math.floor(Number(options.testItems ?? 5)) || 5);
+            const sample = all.sort((a, b) => b.sortDate.localeCompare(a.sortDate)).slice(0, testItems);
             return sample.length ? [sample.map((c) => ({ json: c.item }))] : null;
         }
 

@@ -32,10 +32,9 @@ export function keys<T extends object>(o: T) {
 }
 
 export function urlEncode(data: object): string {
-    const parts: string[] = [];
-    for (const k of keys(data))
-        parts.push(`${encodeURI(k)}=${data[k]}`)
-    return encodeURI(parts.join("&"));
+    return keys(data)
+        .map((k) => `${encodeURIComponent(String(k))}=${encodeURIComponent(String(data[k]))}`)
+        .join("&");
 }
 
 export async function getToken(ctx: Ctx) {
@@ -50,7 +49,10 @@ export async function getToken(ctx: Ctx) {
             "Authorization": `Basic ${UMUAPP_CLIENTID}`
         },
         body: urlEncode({
-            ...creds,
+            // Solo usuario y contraseña: la credencial tiene más campos (token de aplicación, etc.)
+            // que no deben viajar en el formulario.
+            username: creds.username,
+            password: creds.password,
             grant_type: "password",
             scope: "micampus"
         }),
