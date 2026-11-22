@@ -91,18 +91,54 @@ export function extractDates(text: string): string[] {
     return out;
 }
 
+// Entidades HTML con nombre: Latin-1 (160-255, en orden) más las de uso común.
+const LATIN1 =
+    'nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest ' +
+    'Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig ' +
+    'agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml';
+const ENTITIES: Record<string, string> = {
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+    euro: '€', ndash: '–', mdash: '—', hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', bull: '•', trade: '™',
+};
+LATIN1.split(' ').forEach((name, i) => {
+    ENTITIES[name] = String.fromCharCode(160 + i);
+});
+
+/** `&aacute;` → `á`, `&#241;` → `ñ`, `&#x20AC;` → `€`. Lo desconocido se deja tal cual. Una sola pasada. */
+export function decodeEntities(text: string): string {
+    if (!text.includes('&')) return text;
+    return text.replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z][A-Za-z0-9]{1,9}));/g, (whole, dec, hex, name) => {
+        if (name) return ENTITIES[name] ?? whole;
+        const code = dec ? Number(dec) : parseInt(hex, 16);
+        if (!Number.isFinite(code) || code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return whole;
+        return String.fromCodePoint(code);
+    });
+}
+
+/** Campos que contienen HTML a propósito: ahí las entidades forman parte del marcado y no se tocan. */
+const HTML_KEYS = new Set(['descripcion', 'cuerpo', 'instrucciones', 'body', 'description', 'instructions']);
+
+/** Decodifica las entidades HTML de todos los textos (también del `raw`), salvo en los campos con HTML. */
+export function decodeDeep<T>(value: T, key = ''): T {
+    if (typeof value === 'string') return (HTML_KEYS.has(key) ? value : decodeEntities(value)) as unknown as T;
+    if (Array.isArray(value)) return value.map((v) => decodeDeep(v, key)) as unknown as T;
+    if (value && typeof value === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = decodeDeep(v, k);
+        return out as T;
+    }
+    return value;
+}
+
 export function stripHtml(html: unknown): string {
     if (typeof html !== 'string') return '';
-    return html
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
+    return decodeEntities(
+        html
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<[^>]+>/g, ''),
+    )
+        .replace(/\u00a0/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 }
@@ -139,7 +175,7 @@ export function collectSiteIds(node: unknown, out = new Set<string>()): string[]
 // Clasificación de eventos
 // ---------------------------------------------------------------------------
 
-export type EventType = 'alert' | 'announcement' | 'announcementAv' | 'exam' | 'task' | 'taskChanged' | 'grade' | 'calendarEvent';
+export type EventType = 'alert' | 'announcement' | 'announcementAv' | 'examAv' | 'exam' | 'task' | 'taskChanged' | 'grade' | 'calendarEvent';
 
 export interface Rules {
     exam: RegExp;

@@ -1,13 +1,12 @@
 import { IDataObject, IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription, NodeConnectionTypes, NodeOperationError } from "n8n-workflow";
 import { getEndpoint } from "./login";
-import { extractList, formatUmQuery, normalizeTask } from "./functions";
+import { decodeDeep, extractList, formatUmQuery, normalizeTask } from "./functions";
 import {
     matchesAnnouncement,
     matchesAssignment,
     normalizeSakaiAnnouncement,
     normalizeSakaiAssignment,
     normalizeSakaiCalendarEvent,
-    normalizeSakaiExam,
     normalizeSakaiMail,
     normalizeSakaiMessageCounts,
     parseAnnouncementRef,
@@ -15,6 +14,7 @@ import {
     sakaiList,
 } from "./sakai";
 import { aulaGet, getWebSession } from "./webview";
+import { fetchAvExams } from "./exams";
 
 export class Umuapp implements INodeType {
     description: INodeTypeDescription = {
@@ -168,6 +168,15 @@ export class Umuapp implements INodeType {
                         description: "Evaluaciones publicadas en Tests y cuestionarios (entidad sam_pub)",
                     },
                 ],
+            },
+            {
+                displayName: "Sitio (Opcional)",
+                name: "examSite",
+                type: "string",
+                default: "",
+                placeholder: "1898_G_2026_N_N",
+                description: "Si lo dejas vacío se consultan todos tus sitios",
+                displayOptions: { show: { resource: ["avExam"] } },
             },
             {
                 displayName: "Operación",
@@ -488,7 +497,7 @@ export class Umuapp implements INodeType {
             const resource = this.getNodeParameter("resource", i) as string;
             const operation = this.getNodeParameter("operation", i) as string;
             const simplify = this.getNodeParameter("simplify", i, true) as boolean;
-            const push = (json: IDataObject) => out.push({ json, pairedItem: i });
+            const push = (json: IDataObject) => out.push({ json: decodeDeep(json), pairedItem: i });
 
             try {
                 if (resource === "avAnnouncement") {
@@ -566,7 +575,11 @@ export class Umuapp implements INodeType {
                         const path = operation === "getSite" ? `/direct/calendar/site/${enc(site())}.json` : "/direct/calendar/my.json";
                         for (const e of wholeOrList(await fetchJson(path, query))) push(simplify ? normalizeSakaiCalendarEvent(e, base) : e);
                     } else if (resource === "avExam") {
-                        for (const e of wholeOrList(await fetchJson("/direct/sam_pub.json"))) push(simplify ? normalizeSakaiExam(e, "") : e);
+                        const { exams, sitiosConsultados } = await fetchAvExams(this, (this.getNodeParameter("examSite", i, "") as string).trim());
+                        if (!exams.length)
+                            push({ evento: "examAv", sinResultados: true, sitiosConsultados, aviso: "Ninguna forma de consulta devolvió evaluaciones." });
+                        exams.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+                        for (const x of exams) push(simplify ? x.item : (x.item.raw as IDataObject));
                     } else if (resource === "avForum") {
                         const siteId = site();
                         const forum = (this.getNodeParameter("avForumId", i, "") as string).trim();
@@ -585,10 +598,13 @@ export class Umuapp implements INodeType {
                     }
                 } else if (resource === "avRequest") {
                     const res = await aulaGet(this, this.getNodeParameter("avPath", i) as string);
-                    push({
-                        statusCode: res.statusCode,
-                        url: res.url,
-                        data: res.isJson ? (res.data as IDataObject) : String(res.data).slice(0, 20000),
+                    // Petición libre: se devuelve tal cual, sin decodificar entidades.
+                    out.push({
+                        pairedItem: i, json: {
+                            statusCode: res.statusCode,
+                            url: res.url,
+                            data: res.isJson ? (res.data as IDataObject) : String(res.data).slice(0, 20000),
+                        }
                     });
                 } else if (resource === "task" && operation === "getAll") {
                     const { base } = await getWebSession(this);

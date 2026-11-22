@@ -59,3 +59,8 @@ npm run dev     # n8n local con recarga
 npm test        # compila y ejecuta las pruebas de test/ (APIs simuladas)
 npm run lint
 ```
+
+
+## Exámenes (Aula Virtual)
+
+Solo lo publicado en **Tests y cuestionarios** (`/direct/sam_pub.json`). Las tareas salen en el recurso Tarea y los eventos en Calendario (Aula Virtual). El trigger tiene el evento «Examen De Aula Virtual Nuevo».

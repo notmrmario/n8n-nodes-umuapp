@@ -6,6 +6,7 @@ const { sakaiTimeToIso, normalizeSakaiAssignment } = require('../dist/nodes/Umua
 
 const SITE = '1898_G_2026_N_N';
 let log;
+let currentSite = '';
 function http(o) {
     const u = new URL(o.url);
     log.push(`${o.method} ${u.host}${u.pathname}${u.search}`);
@@ -19,9 +20,18 @@ function http(o) {
     if (u.pathname === '/direct/session/current.json') return res(200, JSON.stringify({ userEid: 'nacho' }));
     const json = (o2) => res(200, JSON.stringify(o2));
     if (u.pathname === '/direct/calendar/my.json')
-        return json({ calendar_collection: [{ eventId: 'e1', siteId: SITE, siteName: 'ISO', title: 'Parcial', description: '<p>Aula 2</p>', type: 'Exam', firstTime: { time: Date.UTC(2026, 11, 10, 8, 0) }, duration: 5400000, assignmentId: null }] });
+        return json({ calendar_collection: [{ eventId: 'e1', siteId: SITE, siteName: 'ISO', title: 'Parcial', description: '<p>Aula 2</p>', type: 'Exam', firstTime: { time: Date.UTC(2026, 11, 10, 8, 0) }, duration: 5400000, assignmentId: null },
+            { eventId: 'e2', siteId: SITE, title: 'Fecha límite Examen práctico 1', type: 'Deadline', firstTime: { time: Date.UTC(2026, 10, 20, 10, 0) }, duration: 0, assignmentId: 'a1' },
+            { eventId: 'e3', siteId: SITE, title: 'Clase de teoría', type: 'Class session', firstTime: { time: Date.UTC(2026, 10, 21, 10, 0) }, duration: 3600000 }] });
+    if (u.pathname === '/direct/assignment/my.json')
+        return json({ assignment_collection: [
+            { id: 'a1', context: SITE, title: 'Examen práctico 1', instructions: '<p>Sala 3</p>', openTimeString: '20261120080000000', dueTimeString: '20261120100000000' },
+            { id: 'a2', context: SITE, title: 'Práctica 4', dueTimeString: '20261201225900000' },
+        ] });
     if (u.pathname === `/direct/calendar/site/${SITE}.json`) return json({ calendar_collection: [] });
-    if (u.pathname === '/direct/sam_pub.json') return json({ sam_pub_collection: [{ publishedAssessmentId: 7, title: 'Test tema 4', startDate: Date.UTC(2026, 10, 6, 8, 0), dueDate: Date.UTC(2026, 10, 9, 22, 55) }] });
+    if (u.pathname.startsWith('/portal/site/')) { currentSite = u.pathname.split('/').pop(); return res(200, '<html/>'); }
+    if (u.pathname === '/direct/sam_pub.json' || u.pathname.startsWith('/direct/sam_pub/context/'))
+        return json({ sam_pub_collection: currentSite === SITE ? [{ publishedAssessmentId: 7, ownerSiteId: SITE, title: 'Test tema 4', startDate: Date.UTC(2026, 10, 6, 8, 0), dueDate: Date.UTC(2026, 10, 9, 22, 55) }] : [] });
     if (u.pathname === `/direct/forums/site/${SITE}.json`) return json({ forums_collection: [{ id: 'f1', title: 'Dudas' }] });
     if (u.pathname === `/direct/forums/site/${SITE}/forum/f1.json`) return json({ forums_collection: [{ id: 't1', title: 'Práctica 2' }] });
     if (u.pathname === `/direct/forums/site/${SITE}/forum/f1/topic/t1.json`) return json({ forums_collection: [{ id: 'm1', title: 'Pregunta' }] });
@@ -38,7 +48,7 @@ const ctx = (params) => ({
     getCredentials: async () => ({ username: 'a@um.es', password: 'x' }),
     helpers: { httpRequest: async (o) => http(o) },
 });
-const run = async (params) => { clearSessions(); log = []; return (await new Umuapp().execute.call(ctx({ simplify: true, ...params })))[0].map((x) => x.json); };
+const run = async (params) => { clearSessions(); log = []; currentSite = ''; return (await new Umuapp().execute.call(ctx({ simplify: true, ...params })))[0].map((x) => x.json); };
 
 (async () => {
     // fechas de Sakai
@@ -60,9 +70,18 @@ const run = async (params) => { clearSessions(); log = []; return (await new Umu
     assert.deepStrictEqual(r, []);
 
     // exámenes
+    // Sesión nueva sin sitio actual: sam_pub.json a secas devuelve vacío, el nodo recorre los sitios.
     r = await run({ resource: 'avExam', operation: 'getAll' });
-    assert.strictEqual(r[0].titulo, 'Test tema 4');
+    assert.deepStrictEqual(r.map((x) => x.titulo), ['Test tema 4']);
+    assert.strictEqual(r[0].evento, 'examAv');
+    assert.strictEqual(r[0].consulta, 'portal');
     assert.strictEqual(r[0].inicio, '2026-11-06T09:00:00+01:00');
+    assert.ok(log.some((l) => l.includes(`/portal/site/${SITE}`)));
+    assert.ok(log.every((l) => !l.includes('assignment') && !l.includes('calendar')), 'no consulta otras fuentes');
+    r = await run({ resource: 'avExam', operation: 'getAll', examSite: SITE, simplify: false });
+    assert.strictEqual(r[0].publishedAssessmentId, 7);
+    r = await run({ resource: 'avExam', operation: 'getAll', examSite: 'OTRO' });
+    assert.strictEqual(r[0].sinResultados, true);
 
     // foros: baja un nivel cada vez
     r = await run({ resource: 'avForum', operation: 'getSite', avSiteId: SITE, avForumId: '', avTopicId: '' });

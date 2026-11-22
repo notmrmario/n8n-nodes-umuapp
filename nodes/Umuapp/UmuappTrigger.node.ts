@@ -6,9 +6,10 @@ import type {
     IPollFunctions,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
-import { EventType, formatUmQuery, normalizeTask, toIsoMadrid } from './functions';
+import { decodeDeep, EventType, formatUmQuery, normalizeTask, toIsoMadrid } from './functions';
 import { getEndpoint } from './login';
 import { normalizeSakaiAnnouncement, sakaiList } from './sakai';
+import { fetchAvExams } from './exams';
 import { compareTasks, fetchAllTasks, StoredTask, taskKey } from './tasks';
 import { Alert, CalendarEvent } from './types';
 import { aulaGet, getWebSession } from './webview';
@@ -88,7 +89,7 @@ export class UmuappTrigger implements INodeType {
                 name: 'events',
                 type: 'multiOptions',
                 required: true,
-                default: ['exam', 'task', 'announcement'],
+                default: ['examAv', 'task', 'announcementAv'],
                 options: [
                     {
                         name: 'Alerta',
@@ -104,6 +105,11 @@ export class UmuappTrigger implements INodeType {
                         name: 'Evento De Calendario Nuevo',
                         value: 'calendarEvent',
                         description: 'Cualquier evento nuevo del calendario del usuario',
+                    },
+                    {
+                        name: 'Examen De Aula Virtual Nuevo',
+                        value: 'examAv',
+                        description: 'Evaluaciones nuevas publicadas en Tests y cuestionarios de Aula Virtual',
                     },
                     {
                         name: 'Tarea Modificada (Incluye Calificaciones)',
@@ -352,6 +358,11 @@ export class UmuappTrigger implements INodeType {
             }
         }
 
+        if (selected.includes('examAv')) {
+            const { exams } = await fetchAvExams(this);
+            for (const x of exams) candidates.push({ key: x.key, item: x.item, sortDate: x.sortDate });
+        }
+
         // --- Tareas: nuevas y modificadas (comparando con lo guardado) -------------------
         const wantNewTasks = selected.includes('task');
         const wantChangedTasks = selected.includes('taskChanged');
@@ -412,7 +423,7 @@ export class UmuappTrigger implements INodeType {
             // Prueba manual: devolvemos lo más reciente para poder ver la estructura.
             const testItems = Math.max(1, Math.floor(Number(options.testItems ?? 5)) || 5);
             const sample = all.sort((a, b) => b.sortDate.localeCompare(a.sortDate)).slice(0, testItems);
-            return sample.length ? [sample.map((c) => ({ json: c.item }))] : null;
+            return sample.length ? [sample.map((c) => ({ json: decodeDeep(c.item) }))] : null;
         }
 
         const seen = new Set(state.cached ?? []);
@@ -427,6 +438,6 @@ export class UmuappTrigger implements INodeType {
         const merged = [...toEmit.map((c) => ({ item: c.item, sortDate: c.sortDate })), ...taskExtra];
         if (!merged.length) return null;
         merged.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
-        return [merged.map((c) => ({ json: c.item }))];
+        return [merged.map((c) => ({ json: decodeDeep(c.item) }))];
     }
 }
