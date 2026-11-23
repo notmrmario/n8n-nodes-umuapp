@@ -64,3 +64,7 @@ npm run lint
 ## Exámenes (Aula Virtual)
 
 Solo lo publicado en **Tests y cuestionarios** (`/direct/sam_pub.json`). Las tareas salen en el recurso Tarea y los eventos en Calendario (Aula Virtual). El trigger tiene el evento «Examen De Aula Virtual Nuevo».
+
+Para llegar a un examen desde su alerta: «Examen (Aula Virtual) → Get» con la `referencia_web` de la alerta. Esa referencia solo identifica el sitio, así que se devuelven las evaluaciones de ese sitio, que puedes acotar con «Título Contiene».
+
+Para el examen concreto de una alerta: «Examen (Aula Virtual) → Get» con `referencia_web` en «Referencia» y `descripcion` en «Descripción De La Alerta» (por ejemplo `{{ $json.descripcion }}`).

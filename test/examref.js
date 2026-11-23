@@ -1,0 +1,11 @@
+const assert = require('assert');
+const { parseExamRef } = require('../dist/nodes/Umuapp/exams.js');
+const eq = (i, o) => assert.deepStrictEqual(parseExamRef(i), o, i);
+eq('https://aulavirtual.um.es/portal/site/1898_G_2026_N_N/tool/40a59028-0ead-4950-8395-b256aa8d6e23', { site: '1898_G_2026_N_N' });
+eq('/samigo/s/1898_G_2026_N_N/p/659925', { site: '1898_G_2026_N_N', id: '659925' });
+eq('/sam_pub/659925', { id: '659925' });
+eq('https://x/portal/directtool/abc?publishedId=662818&siteId=1898_G_2026_N_N', { id: '662818', site: '1898_G_2026_N_N' });
+eq('659925', { id: '659925' });
+eq('1898_G_2026_N_N', { site: '1898_G_2026_N_N' });
+eq('hola', {});
+console.log('examref.js OK');

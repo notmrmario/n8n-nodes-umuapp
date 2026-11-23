@@ -5,6 +5,9 @@
 - **Examen (Aula Virtual)** consulta solo «Tests y cuestionarios» (`sam_pub`): cada cosa se clasifica según donde sale en el Aula Virtual. Las tareas siguen en «Tarea» y los eventos en «Calendario (Aula Virtual)».
 - `sam_pub.json` solo lista las evaluaciones del «sitio actual» de la sesión, y una sesión nueva no tiene ninguno (devolvía vacío aunque en el navegador sí salían). Ahora se consulta sitio por sitio, probando tres formas de fijar el sitio; `consulta` indica cuál funcionó. Nuevo campo opcional «Sitio».
 - Las entidades HTML (`&aacute;`, `&#241;`, `&nbsp;`…) se decodifican en todos los textos de salida, incluido `raw`. Los campos que llevan HTML a propósito (`descripcion`, `cuerpo`, `instrucciones`) se dejan como vienen; sus versiones `*Texto` sí salen decodificadas. «Petición (Aula Virtual)» no decodifica.
+- **Trigger:** el valor por defecto de «Eventos» (`exam`, `announcement`) no coincidía con ninguna opción; ahora es Anuncio, Examen, Tarea nueva y Tarea modificada de Aula Virtual. Una prueba comprueba que todos los valores por defecto existan.
+- **Examen (Aula Virtual) → Get:** busca un examen a partir de la `referencia_web` de su alerta, de una referencia de Samigo (`/samigo/s/{sitio}/p/{id}`), de un ID de evaluación o de un sitio. Las alertas de examen solo traen el sitio (`/portal/site/{sitio}/tool/{uuid}`), así que hay un filtro «Título Contiene» para elegir entre varias evaluaciones; si nada coincide, `candidatos` lista las que hay.
+- **Examen → Get:** nuevo campo «Descripción De La Alerta». La descripción de una alerta de examen es «título - Autor: nombre» y la referencia web da el sitio (herramienta `sakai.samigo`), con lo que se localiza la evaluación concreta: título igual, si no título que lo contenga, y el autor desempata. `coincidencia` indica el criterio usado.
 - **Trigger:** nuevo evento «Examen De Aula Virtual Nuevo» (nuevas evaluaciones de Tests y cuestionarios).
 
 ## 0.6.0

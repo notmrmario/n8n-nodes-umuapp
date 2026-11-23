@@ -1,4 +1,5 @@
 import type { IDataObject } from 'n8n-workflow';
+import { decodeEntities } from './functions';
 import { normalizeSakaiExam, sakaiList } from './sakai';
 import { aulaGet, Ctx } from './webview';
 
@@ -80,4 +81,84 @@ export async function fetchAvExams(ctx: Ctx, onlySite = ''): Promise<{ exams: Ex
         return { key: `avexam:test:${k}`, item, sortDate: String(item.inicio ?? '') };
     });
     return { exams, sitiosConsultados: sites.length };
+}
+
+// ---------------------------------------------------------------------------
+// Examen a partir de una referencia (p. ej. la referencia_web de una alerta)
+// ---------------------------------------------------------------------------
+
+export interface ExamRef {
+    site?: string;
+    id?: string;
+}
+
+/**
+ * Acepta: la `referencia_web` de una alerta de examen (`…/portal/site/{sitio}/tool/{uuid}`: solo da el sitio),
+ * una referencia de Samigo (`/samigo/s/{sitio}/p/{id}`), `/sam_pub/{id}`, parámetros `publishedId=`/`publishedAssessmentId=`,
+ * un número (id de la evaluación) o un id de sitio suelto.
+ */
+export function parseExamRef(input: string): ExamRef {
+    let text = input.trim();
+    try {
+        text = decodeURIComponent(text);
+    } catch {
+        // texto con % suelto: se usa tal cual
+    }
+    const ref: ExamRef = {};
+    const samigo = /\/samigo\/s\/([^/\s]+)\/p\/(\d+)/.exec(text);
+    if (samigo) return { site: samigo[1], id: samigo[2] };
+    const pub = /\/sam_pub\/(\d+)/.exec(text);
+    if (pub) ref.id = pub[1];
+    const param = /[?&;](?:publishedId|publishedAssessmentId|assessmentId)=(\d+)/i.exec(text);
+    if (param) ref.id ??= param[1];
+    const site = /\/(?:portal\/)?site\/([^/?&#\s]+)/.exec(text) ?? /[?&]siteId=([^&#\s]+)/.exec(text);
+    if (site) ref.site = site[1];
+    if (!ref.id && !ref.site) {
+        if (/^\d+$/.test(text)) ref.id = text;
+        else if (/^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+$/.test(text)) ref.site = text;
+    }
+    return ref;
+}
+
+const fold = (s: string) => decodeEntities(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** La descripción de una alerta de examen es «{título de la evaluación} - Autor: {autor}». */
+export function parseExamAlertDescription(desc: string): { titulo: string; autor: string } {
+    const text = decodeEntities(desc).trim();
+    const m = /^(.*?)\s+-\s+Autor:\s*(.*)$/s.exec(text);
+    return m ? { titulo: m[1].trim(), autor: m[2].trim() } : { titulo: text, autor: '' };
+}
+
+/**
+ * Evaluaciones que corresponden a una referencia. Con la descripción de la alerta (o un trozo del título) se
+ * elige la evaluación concreta: primero título igual; si no, que lo contenga. El autor desempata.
+ */
+export async function fetchAvExamByRef(
+    ctx: Ctx,
+    refText: string,
+    titleContains = '',
+    alertDescription = '',
+): Promise<{ exams: ExamResult[]; ref: ExamRef; candidatos: string[]; criterio: string }> {
+    const ref = parseExamRef(refText);
+    if (!ref.id && !ref.site) throw new Error('No se reconoce la referencia: pasa la referencia_web de la alerta, un sitio o el id de la evaluación.');
+    const { exams } = await fetchAvExams(ctx, ref.site ?? '');
+    const fromAlert = alertDescription.trim() ? parseExamAlertDescription(alertDescription) : { titulo: '', autor: '' };
+    const wanted = fold(titleContains.trim() || fromAlert.titulo);
+    const author = fold(fromAlert.autor);
+
+    let list = exams.filter((x) => {
+        if (ref.id && String(x.item.id ?? '') !== ref.id) return false;
+        return !(ref.site && x.item.sitio && x.item.sitio !== ref.site);
+    });
+    let criterio = ref.id ? 'id' : 'sitio';
+    if (wanted) {
+        const exact = list.filter((x) => fold(String(x.item.titulo ?? '')) === wanted);
+        const part = list.filter((x) => fold(String(x.item.titulo ?? '')).includes(wanted));
+        [list, criterio] = exact.length ? [exact, 'título igual'] : [part, 'título contiene'];
+        if (list.length > 1 && author) {
+            const byAuthor = list.filter((x) => fold(String((x.item.raw as IDataObject | undefined)?.lastModifiedBy ?? '')) === author);
+            if (byAuthor.length) list = byAuthor;
+        }
+    }
+    return { exams: list, ref, candidatos: exams.map((x) => String(x.item.titulo ?? '')), criterio };
 }

@@ -14,7 +14,7 @@ import {
     sakaiList,
 } from "./sakai";
 import { aulaGet, getWebSession } from "./webview";
-import { fetchAvExams } from "./exams";
+import { fetchAvExamByRef, fetchAvExams } from "./exams";
 
 export class Umuapp implements INodeType {
     description: INodeTypeDescription = {
@@ -167,7 +167,41 @@ export class Umuapp implements INodeType {
                         action: "Get many examenes de aula virtual",
                         description: "Evaluaciones publicadas en Tests y cuestionarios (entidad sam_pub)",
                     },
+                    {
+                        name: "Get",
+                        value: "get",
+                        action: "Get un examen de aula virtual a partir de su referencia",
+                        description: "Busca el examen a partir de la referencia web de su alerta, su sitio o su ID",
+                    },
                 ],
+            },
+            {
+                displayName: "Referencia",
+                name: "examRef",
+                type: "string",
+                default: "",
+                required: true,
+                placeholder: "https://aulavirtual.um.es/portal/site/1898_G_2026_N_N/tool/…",
+                description: "Enlace referencia web de una alerta de examen (da el sitio), referencia de Samigo, ID de la evaluación o ID del sitio",
+                displayOptions: { show: { resource: ["avExam"], operation: ["get"] } },
+            },
+            {
+                displayName: "Descripción De La Alerta (Opcional)",
+                name: "examAlertDescription",
+                type: "string",
+                default: "",
+                placeholder: "ISO-2026-Cuestionario-Práctica6 - Autor: JUAN PIERNAS CANOVAS",
+                description: "El campo descripción de la alerta de examen: «título - Autor: nombre». Sirve para elegir la evaluación concreta del sitio.",
+                displayOptions: { show: { resource: ["avExam"], operation: ["get"] } },
+            },
+            {
+                displayName: "Título Contiene (Opcional)",
+                name: "examTitle",
+                type: "string",
+                default: "",
+                placeholder: "Cuestionario Tema 5",
+                description: "Para elegir uno cuando el sitio tiene varias evaluaciones. Ignora mayúsculas y tildes.",
+                displayOptions: { show: { resource: ["avExam"], operation: ["get"] } },
             },
             {
                 displayName: "Sitio (Opcional)",
@@ -176,7 +210,7 @@ export class Umuapp implements INodeType {
                 default: "",
                 placeholder: "1898_G_2026_N_N",
                 description: "Si lo dejas vacío se consultan todos tus sitios",
-                displayOptions: { show: { resource: ["avExam"] } },
+                displayOptions: { show: { resource: ["avExam"], operation: ["getAll"] } },
             },
             {
                 displayName: "Operación",
@@ -574,6 +608,17 @@ export class Umuapp implements INodeType {
                         if (to) query.lastDate = to;
                         const path = operation === "getSite" ? `/direct/calendar/site/${enc(site())}.json` : "/direct/calendar/my.json";
                         for (const e of wholeOrList(await fetchJson(path, query))) push(simplify ? normalizeSakaiCalendarEvent(e, base) : e);
+                    } else if (resource === "avExam" && operation === "get") {
+                        const { exams, ref, candidatos, criterio } = await fetchAvExamByRef(
+                            this,
+                            this.getNodeParameter("examRef", i) as string,
+                            this.getNodeParameter("examTitle", i, "") as string,
+                            this.getNodeParameter("examAlertDescription", i, "") as string,
+                        );
+                        if (!exams.length)
+                            push({ evento: "examAv", sinResultados: true, referencia: ref as IDataObject, candidatos, aviso: "Ninguna evaluación coincide con la referencia. En «candidatos» tienes las que sí hay." });
+                        exams.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+                        for (const x of exams) push(simplify ? { ...x.item, coincidencia: criterio } : { ...(x.item.raw as IDataObject), coincidencia: criterio });
                     } else if (resource === "avExam") {
                         const { exams, sitiosConsultados } = await fetchAvExams(this, (this.getNodeParameter("examSite", i, "") as string).trim());
                         if (!exams.length)
@@ -599,13 +644,11 @@ export class Umuapp implements INodeType {
                 } else if (resource === "avRequest") {
                     const res = await aulaGet(this, this.getNodeParameter("avPath", i) as string);
                     // Petición libre: se devuelve tal cual, sin decodificar entidades.
-                    out.push({
-                        pairedItem: i, json: {
-                            statusCode: res.statusCode,
-                            url: res.url,
-                            data: res.isJson ? (res.data as IDataObject) : String(res.data).slice(0, 20000),
-                        }
-                    });
+                    out.push({ pairedItem: i, json: {
+                        statusCode: res.statusCode,
+                        url: res.url,
+                        data: res.isJson ? (res.data as IDataObject) : String(res.data).slice(0, 20000),
+                    } });
                 } else if (resource === "task" && operation === "getAll") {
                     const { base } = await getWebSession(this);
                     const res = await aulaGet(this, "/direct/assignment/my.json");

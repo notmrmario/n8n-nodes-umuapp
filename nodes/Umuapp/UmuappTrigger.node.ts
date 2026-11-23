@@ -89,7 +89,7 @@ export class UmuappTrigger implements INodeType {
                 name: 'events',
                 type: 'multiOptions',
                 required: true,
-                default: ['examAv', 'task', 'announcementAv'],
+                default: ['announcementAv', 'examAv', 'task', 'taskChanged'],
                 options: [
                     {
                         name: 'Alerta',

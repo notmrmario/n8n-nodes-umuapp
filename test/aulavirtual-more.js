@@ -83,6 +83,24 @@ const run = async (params) => { clearSessions(); log = []; currentSite = ''; ret
     r = await run({ resource: 'avExam', operation: 'getAll', examSite: 'OTRO' });
     assert.strictEqual(r[0].sinResultados, true);
 
+    // Examen a partir de la referencia_web de su alerta (solo trae sitio) o de su id.
+    const REF = `https://aulavirtual.um.es/portal/site/${SITE}/tool/40a59028-0ead-4950-8395-b256aa8d6e23`;
+    r = await run({ resource: 'avExam', operation: 'get', examRef: REF });
+    assert.deepStrictEqual(r.map((x) => x.titulo), ['Test tema 4']);
+    r = await run({ resource: 'avExam', operation: 'get', examRef: REF, examTitle: 'TEMA 4' });
+    assert.strictEqual(r.length, 1);
+    r = await run({ resource: 'avExam', operation: 'get', examRef: REF, examTitle: 'otro' });
+    assert.strictEqual(r[0].sinResultados, true);
+    assert.deepStrictEqual(r[0].candidatos, ['Test tema 4']);
+    r = await run({ resource: 'avExam', operation: 'get', examRef: REF, examAlertDescription: 'Test tema 4 - Autor: ALGUIEN' });
+    assert.deepStrictEqual(r.map((x) => [x.titulo, x.coincidencia]), [['Test tema 4', 'título igual']]);
+    r = await run({ resource: 'avExam', operation: 'get', examRef: REF, examAlertDescription: 'Otro cuestionario - Autor: ALGUIEN' });
+    assert.strictEqual(r[0].sinResultados, true);
+    r = await run({ resource: 'avExam', operation: 'get', examRef: `/samigo/s/${SITE}/p/7` });
+    assert.strictEqual(r[0].titulo, 'Test tema 4');
+    r = await run({ resource: 'avExam', operation: 'get', examRef: `/samigo/s/${SITE}/p/999` });
+    assert.strictEqual(r[0].sinResultados, true);
+
     // foros: baja un nivel cada vez
     r = await run({ resource: 'avForum', operation: 'getSite', avSiteId: SITE, avForumId: '', avTopicId: '' });
     assert.strictEqual(r[0].title, 'Dudas');
