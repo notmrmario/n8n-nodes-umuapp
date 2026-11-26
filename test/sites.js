@@ -3,7 +3,7 @@ const assert = require('assert');
 const { Umuapp } = require('../dist/nodes/Umuapp/Umuapp.node.js');
 const { UmuappTrigger } = require('../dist/nodes/Umuapp/UmuappTrigger.node.js');
 const { clearSessions } = require('../dist/nodes/Umuapp/webview.js');
-const { clearSiteTitleCache, parseSiteRef } = require('../dist/nodes/Umuapp/sites.js');
+const { announcementReference, clearSiteTitleCache, parseSiteRef } = require('../dist/nodes/Umuapp/sites.js');
 
 const SITE = '1898_G_2026_N_N';
 let log;
@@ -34,7 +34,12 @@ function http(o) {
         });
     }
     if (u.pathname === '/direct/site/1897_G_2026_N_N.json') return json({ id: '1897_G_2026_N_N', title: '(1897) POO  [26/27]' });
-    if (u.pathname === `/direct/site/${SITE}/pages.json`) return json([{ id: 'p1', title: 'Exámenes', url: 'https://x/p1', tools: [{ toolId: 'sakai.samigo', title: 'Exámenes', placementId: 'pl1' }] }]);
+    if (u.pathname === `/direct/site/${SITE}/pages.json`)
+        return json([
+            { id: 'p0', title: 'Anuncios', url: 'https://x/p0', tools: [{ toolId: 'sakai.announcements', title: 'Anuncios', placementId: 'ann-1' }] },
+            { id: 'p1', title: 'Exámenes', url: 'https://x/p1', tools: [{ toolId: 'sakai.samigo', title: 'Exámenes', placementId: 'pl1' }] },
+        ]);
+    if (u.pathname === '/direct/site/1897_G_2026_N_N/pages.json') return res(403, 'no');
     throw new Error('petición inesperada ' + o.method + ' ' + o.url);
 }
 const ctx = (params) => ({
@@ -64,11 +69,19 @@ const run = async (params) => { clearSessions(); log = []; return (await new Umu
         m3: '(1897) POO  [26/27]',
     });
     assert.ok(r.every((x) => x.sitioTitulo !== 'Mi Sitio'), 'ya no sale «Mi Sitio»');
-    assert.strictEqual(log.filter((l) => l.includes('/direct/site/') && l.endsWith('.json')).length, 2, 'una consulta por sitio distinto');
+    assert.strictEqual(log.filter((l) => /\/direct\/site\/[^/]+\.json$/.test(l)).length, 2, 'una consulta de título por sitio distinto');
+    assert.strictEqual(new Set(log.filter((l) => l.includes('/pages.json'))).size, 2, 'una consulta de páginas por sitio distinto');
     assert.ok(r.every((x) => x.raw.siteTitle === 'Mi Sitio'), 'el raw queda como llegó');
     // Con caché no vuelve a preguntar (aunque la sesión sea nueva).
     r = await run({ resource: 'avAnnouncement', operation: 'getAll', avLimit: 10, avDays: 30 });
     assert.strictEqual(log.filter((l) => l.includes('/direct/site/')).length, 0);
+
+    // URL del anuncio: placement de «Anuncios» por sitio (una consulta por sitio), null si no se puede obtener.
+    const B = 'https://aulavirtual.um.es';
+    assert.strictEqual(r.find((x) => x.id === 'm1').urlAnuncio, `${B}/portal/directtool/ann-1?itemReference=/announcement/msg/${SITE}/main/m1&sakai_action=doShowmetadata`);
+    assert.strictEqual(r.find((x) => x.id === 'm3').urlAnuncio, null, 'sitio sin acceso a pages.json');
+    assert.strictEqual(announcementReference({ sitio: 'S', id: '/announcement/msg/S/main/abc' }), '/announcement/msg/S/main/abc');
+    assert.strictEqual(announcementReference({ sitio: 'S', canal: 'otro', id: 'S/x/abc' }), '/announcement/msg/S/otro/abc');
 
     // Si falla la consulta del sitio, la salida no se rompe.
     clearSiteTitleCache(); siteFails = true;
@@ -88,7 +101,7 @@ const run = async (params) => { clearSessions(); log = []; return (await new Umu
     assert.ok(!('paginas' in r[0]), 'sin páginas si no se piden');
     assert.ok(!log.some((l) => l.includes('pages.json')));
     r = await run({ resource: 'avSite', operation: 'get', siteRef: SITE, siteIncludePages: true, siteIncludeGroups: true });
-    assert.deepStrictEqual(r[0].paginas, [{ id: 'p1', titulo: 'Exámenes', url: 'https://x/p1', herramientas: [{ herramienta: 'sakai.samigo', titulo: 'Exámenes', descripcion: null, idColocacion: 'pl1' }] }]);
+    assert.deepStrictEqual(r[0].paginas.slice(1), [{ id: 'p1', titulo: 'Exámenes', url: 'https://x/p1', herramientas: [{ herramienta: 'sakai.samigo', titulo: 'Exámenes', descripcion: null, idColocacion: 'pl1' }] }]);
     assert.deepStrictEqual(r[0].grupos, [{ title: 'G1' }]);
     assert.ok(log.some((l) => l.includes('includeGroups=true')));
     r = await run({ resource: 'avSite', operation: 'get', siteRef: SITE, simplify: false });

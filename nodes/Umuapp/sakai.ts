@@ -57,6 +57,48 @@ export function normalizeSakaiAssignment(a: IDataObject, base: string): IDataObj
     };
 }
 
+/**
+ * Tarea de `/direct/umuKernel/allActiveTasks.json` (entidad propia de la UM): `{assignment, siteId, siteName, codAsi, …}`.
+ * A diferencia de `assignment/my`, trae el título real del sitio y la entrega con su nota.
+ */
+export function normalizeSakaiActiveTask(w: IDataObject, base: string): IDataObject {
+    const a = (w.assignment as IDataObject | undefined) ?? {};
+    const site = firstString(w, ['siteId']) || firstString(a, ['context', 'siteId']);
+    const subs = Array.isArray(a.submissions) ? (a.submissions as IDataObject[]) : [];
+    // La entrega del propio usuario (el listado ya viene filtrado a él).
+    const sub = subs[0];
+    const task = normalizeSakaiAssignment({ ...a, context: site }, base);
+    return {
+        ...task,
+        sitioTitulo: w.siteName ?? null,
+        codigoAsignatura: w.codAsi ?? null,
+        codigoTitulacion: w.codTitu ?? null,
+        cursoAcademico: w.cursoAca ?? null,
+        titulacion: w.tituDes ?? null,
+        rol: w.roleMember ?? null,
+        tipoSitio: w.type ?? null,
+        entrega: sub
+            ? {
+                  id: sub.id ?? null,
+                  estado: sub.status ?? null,
+                  entregada: sub.userSubmission ?? null,
+                  fechaEntrega: sub.dateSubmitted || null,
+                  calificada: sub.graded ?? null,
+                  nota: sub.grade ?? null,
+                  devuelta: sub.returned ?? null,
+                  tardia: sub.late ?? null,
+                  comentarioProfesor: sub.feedbackComment ?? sub.feedbackText ?? null,
+                  adjuntosProfesor: sub.feedbackAttachments ?? null,
+                  textoEntregado: sub.submittedText ?? null,
+                  adjuntosEntregados: sub.submittedAttachments ?? [],
+                  puedeEntregar: sub.canSubmit ?? null,
+                  borrador: sub.draft ?? null,
+              }
+            : null,
+        raw: w,
+    };
+}
+
 /** Samigo (Tests y cuestionarios): los nombres de campo no están verificados, se aceptan varios. */
 export function normalizeSakaiExam(e: IDataObject, siteId: string): IDataObject {
     const title = firstString(e, ['title', 'name', 'displayName']);

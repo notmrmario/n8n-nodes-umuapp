@@ -72,3 +72,7 @@ Para el examen concreto de una alerta: «Examen (Aula Virtual) → Get» con `re
 ## Sitio (Aula Virtual)
 
 «Sitio (Aula Virtual) → Get» acepta el ID del sitio (el campo `sitio_av` de la asignatura) o cualquier URL del sitio, y devuelve sus datos. Con «Incluir Páginas Y Herramientas» añade `paginas` (por ejemplo, la herramienta `sakai.samigo` es «Exámenes»). El `sitioTitulo` de anuncios y eventos se resuelve con esta misma consulta.
+
+## Tareas activas, con entrega y nota
+
+«Tarea (Aula Virtual) → Get Many Active» usa `/direct/umuKernel/allActiveTasks.json`. Cada tarea trae `entrega` con tu estado, nota y comentario del profesor, cuando existen, y `sitioTitulo` con el título real del sitio.

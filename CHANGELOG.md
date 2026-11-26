@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0
+
+Hecho a partir de la salida real de varios endpoints del Aula Virtual de la UM:
+
+- **Tarea (Aula Virtual) → Get Many Active** (`/direct/umuKernel/allActiveTasks.json`, entidad propia de la UM): tareas activas con el título real del sitio (`sitioTitulo`), datos de la asignatura y titulación (`codigoAsignatura`, `codigoTitulacion`, `cursoAcademico`, `titulacion`, `rol`) y la entrega del propio usuario en `entrega` (`estado`, `entregada`, `calificada`, `nota`, `comentarioProfesor`, `fechaEntrega`…). Es de donde se puede sacar la nota.
+- **Sitio (Aula Virtual):** `descripcionTexto` salía con las etiquetas HTML porque `htmlDescription` viene escapado; ahora se parte de `description`. `paginas` ya no trae `herramientas` vacías cuando solo se dispone de `sitePages` (la lista de herramientas solo viene con «Incluir Páginas Y Herramientas»).
+
+## 0.8.1
+
+- Los anuncios de Aula Virtual (nodo y trigger) llevan `urlAnuncio`: enlace directo al anuncio, `…/portal/directtool/{herramienta Anuncios del sitio}?itemReference=/announcement/msg/{sitio}/{canal}/{id}&sakai_action=doShowmetadata`. El id de la herramienta «Anuncios» se obtiene de `/direct/site/{id}/pages.json`, una vez por sitio (se recuerda una hora). Si no se puede obtener, `urlAnuncio` es null y sigue valiendo `urlSitio`.
+
 ## 0.8.0
 
 - **Corrección:** `sitioTitulo` salía siempre como «Mi Sitio» en los anuncios (y en el calendario no existía): Sakai devuelve ahí el título del sitio «actual» de la sesión, no el del sitio del anuncio. Ahora el título se toma de `/direct/site/{id}.json`, una consulta por sitio distinto (se recuerda una hora), tanto en el nodo como en el trigger. Los eventos del calendario de Aula Virtual también llevan `sitioTitulo`. Si la consulta falla, el elemento queda como estaba. El `raw` no se toca.

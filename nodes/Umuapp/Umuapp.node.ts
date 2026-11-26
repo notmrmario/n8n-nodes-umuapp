@@ -4,6 +4,7 @@ import { decodeDeep, extractList, formatUmQuery, normalizeTask } from "./functio
 import {
     matchesAnnouncement,
     matchesAssignment,
+    normalizeSakaiActiveTask,
     normalizeSakaiAnnouncement,
     normalizeSakaiAssignment,
     normalizeSakaiCalendarEvent,
@@ -14,7 +15,7 @@ import {
     sakaiList,
 } from "./sakai";
 import { aulaGet, getWebSession } from "./webview";
-import { enrichSiteTitles, fetchSite, normalizeSakaiSite, parseSiteRef } from "./sites";
+import { enrichAnnouncementUrls, enrichSiteTitles, fetchSite, normalizeSakaiSite, parseSiteRef } from "./sites";
 import { fetchAvExamByRef, fetchAvExams } from "./exams";
 
 export class Umuapp implements INodeType {
@@ -365,6 +366,12 @@ export class Umuapp implements INodeType {
                         description: "Todas tus tareas del aula virtual (entidad assignment/my de Sakai)",
                     },
                     {
+                        name: "Get Many Active",
+                        value: "getActive",
+                        action: "Get many tareas activas de aula virtual con su entrega y nota",
+                        description: "Tareas activas con tu entrega y nota (entidad umuKernel/allActiveTasks de la UM)",
+                    },
+                    {
                         name: "Obtener",
                         value: "get",
                         action: "Obtener una tarea de aula virtual",
@@ -706,6 +713,15 @@ export class Umuapp implements INodeType {
                     if (!found.site)
                         throw new NodeOperationError(this.getNode(), `No se pudo obtener el sitio ${id} (HTTP ${found.statusCode}). Comprueba el ID o que tengas acceso a él.`, { itemIndex: i });
                     push(simplify ? normalizeSakaiSite(found.site, base, found.pages) : { ...found.site, ...(found.pages !== undefined ? { sitePages: found.pages as IDataObject[] } : {}) });
+                } else if (resource === "task" && operation === "getActive") {
+                    const { base } = await getWebSession(this);
+                    const res = await aulaGet(this, "/direct/umuKernel/allActiveTasks.json");
+                    if (!res.isJson || res.statusCode >= 400)
+                        throw new NodeOperationError(this.getNode(), `Aula Virtual respondió HTTP ${res.statusCode} sin JSON en /direct/umuKernel/allActiveTasks.json`, { itemIndex: i });
+                    // Respuesta: { data: { assignment: [ { assignment: {…}, siteId, siteName, … } ] } }
+                    const inner = ((res.data as IDataObject).data as IDataObject | undefined) ?? (res.data as IDataObject);
+                    const list = Array.isArray(inner.assignment) ? (inner.assignment as IDataObject[]) : [];
+                    for (const w of list) push(simplify ? normalizeSakaiActiveTask(w, base) : w);
                 } else if (resource === "task" && operation === "getAll") {
                     const { base } = await getWebSession(this);
                     const res = await aulaGet(this, "/direct/assignment/my.json");
@@ -878,6 +894,7 @@ export class Umuapp implements INodeType {
 
         // Título real del sitio en anuncios y eventos (la API devuelve «Mi Sitio»).
         await enrichSiteTitles(this, out.map((o) => o.json));
+        await enrichAnnouncementUrls(this, out.map((o) => o.json));
         return [out];
     }
 }
