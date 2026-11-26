@@ -68,3 +68,7 @@ Solo lo publicado en **Tests y cuestionarios** (`/direct/sam_pub.json`). Las tar
 Para llegar a un examen desde su alerta: «Examen (Aula Virtual) → Get» con la `referencia_web` de la alerta. Esa referencia solo identifica el sitio, así que se devuelven las evaluaciones de ese sitio, que puedes acotar con «Título Contiene».
 
 Para el examen concreto de una alerta: «Examen (Aula Virtual) → Get» con `referencia_web` en «Referencia» y `descripcion` en «Descripción De La Alerta» (por ejemplo `{{ $json.descripcion }}`).
+
+## Sitio (Aula Virtual)
+
+«Sitio (Aula Virtual) → Get» acepta el ID del sitio (el campo `sitio_av` de la asignatura) o cualquier URL del sitio, y devuelve sus datos. Con «Incluir Páginas Y Herramientas» añade `paginas` (por ejemplo, la herramienta `sakai.samigo` es «Exámenes»). El `sitioTitulo` de anuncios y eventos se resuelve con esta misma consulta.

@@ -1,6 +1,6 @@
 {
     "name": "@notmrmario/n8n-nodes-umuapp",
-    "version": "0.7.2",
+    "version": "0.8.0",
     "description": "Nodos de n8n para UMUApp (Universidad de Murcia): trigger de tareas, calificaciones, exámenes, anuncios y calendario",
     "license": "MIT",
     "homepage": "",
@@ -18,7 +18,7 @@
    "scripts": {
 		"build": "n8n-node build",
 		"build:watch": "tsc --watch",
-		"test": "n8n-node build && node test/changes.js && node test/task.js && node test/announcements.js && node test/alerts.js && node test/aulavirtual-more.js && node test/exams-trigger.js && node test/entities.js && node test/trigger-defaults.js && node test/examref.js && node test/examalert.js",
+		"test": "n8n-node build && node test/changes.js && node test/task.js && node test/announcements.js && node test/alerts.js && node test/aulavirtual-more.js && node test/exams-trigger.js && node test/entities.js && node test/trigger-defaults.js && node test/examref.js && node test/examalert.js && node test/sites.js",
 		"dev": "n8n-node dev",
 		"lint": "n8n-node lint",
 		"lint:fix": "n8n-node lint --fix",

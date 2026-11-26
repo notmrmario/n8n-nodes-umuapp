@@ -14,6 +14,7 @@ import {
     sakaiList,
 } from "./sakai";
 import { aulaGet, getWebSession } from "./webview";
+import { enrichSiteTitles, fetchSite, normalizeSakaiSite, parseSiteRef } from "./sites";
 import { fetchAvExamByRef, fetchAvExams } from "./exams";
 
 export class Umuapp implements INodeType {
@@ -49,8 +50,53 @@ export class Umuapp implements INodeType {
                     { name: "Foro (Aula Virtual)", value: "avForum" },
                     { name: "Mensajes Privados (Aula Virtual)", value: "avMessages" },
                     { name: "Petición (Aula Virtual)", value: "avRequest" },
+                    { name: "Sitio (Aula Virtual)", value: "avSite" },
                     { name: "Tarea (Aula Virtual)", value: "task" },
                 ],
+            },
+
+            // ---- Sitio de Aula Virtual ---------------------------------------------
+            {
+                displayName: "Operación",
+                name: "operation",
+                type: "options",
+                noDataExpression: true,
+                displayOptions: { show: { resource: ["avSite"] } },
+                default: "get",
+                options: [
+                    {
+                        name: "Get",
+                        value: "get",
+                        action: "Get un sitio de aula virtual",
+                        description: "Datos de un sitio a partir de su ID o de su URL",
+                    },
+                ],
+            },
+            {
+                displayName: "Sitio (ID O URL)",
+                name: "siteRef",
+                type: "string",
+                default: "",
+                required: true,
+                placeholder: "1898_G_2026_N_N o https://aulavirtual.um.es/portal/site/1898_G_2026_N_N",
+                description: "El ID del sitio (campo sitio_av de la asignatura) o cualquier URL del sitio",
+                displayOptions: { show: { resource: ["avSite"], operation: ["get"] } },
+            },
+            {
+                displayName: "Incluir Páginas Y Herramientas",
+                name: "siteIncludePages",
+                type: "boolean",
+                default: false,
+                description: "Whether to include the pages and tools of the site (one more request)",
+                displayOptions: { show: { resource: ["avSite"], operation: ["get"] } },
+            },
+            {
+                displayName: "Incluir Grupos",
+                name: "siteIncludeGroups",
+                type: "boolean",
+                default: false,
+                description: "Whether to include the groups of the site",
+                displayOptions: { show: { resource: ["avSite"], operation: ["get"] } },
             },
 
             // ---- Anuncios de Aula Virtual (Sakai) ----------------------------------
@@ -514,7 +560,7 @@ export class Umuapp implements INodeType {
                 description: "Whether to return normalised fields (ISO dates, googleCalendar block) plus the raw object",
                 displayOptions: {
                     show: {
-                        resource: ["calendar", "alert", "subject", "task", "avAnnouncement", "avCalendar", "avExam", "avMail", "avMessages"],
+                        resource: ["calendar", "alert", "subject", "task", "avAnnouncement", "avCalendar", "avExam", "avMail", "avMessages", "avSite"],
                         operation: ["getAll", "get", "getTasks", "getAllTasks", "getSite", "getCounts"],
                     },
                 },
@@ -649,6 +695,17 @@ export class Umuapp implements INodeType {
                         url: res.url,
                         data: res.isJson ? (res.data as IDataObject) : String(res.data).slice(0, 20000),
                     } });
+                } else if (resource === "avSite") {
+                    const id = parseSiteRef(this.getNodeParameter("siteRef", i) as string);
+                    if (!id) throw new NodeOperationError(this.getNode(), "No reconozco el sitio: indica su ID o una URL del tipo …/portal/site/{id}", { itemIndex: i });
+                    const { base } = await getWebSession(this);
+                    const found = await fetchSite(this, id, {
+                        groups: this.getNodeParameter("siteIncludeGroups", i, false) as boolean,
+                        pages: this.getNodeParameter("siteIncludePages", i, false) as boolean,
+                    });
+                    if (!found.site)
+                        throw new NodeOperationError(this.getNode(), `No se pudo obtener el sitio ${id} (HTTP ${found.statusCode}). Comprueba el ID o que tengas acceso a él.`, { itemIndex: i });
+                    push(simplify ? normalizeSakaiSite(found.site, base, found.pages) : { ...found.site, ...(found.pages !== undefined ? { sitePages: found.pages as IDataObject[] } : {}) });
                 } else if (resource === "task" && operation === "getAll") {
                     const { base } = await getWebSession(this);
                     const res = await aulaGet(this, "/direct/assignment/my.json");
@@ -819,6 +876,8 @@ export class Umuapp implements INodeType {
             }
         }
 
+        // Título real del sitio en anuncios y eventos (la API devuelve «Mi Sitio»).
+        await enrichSiteTitles(this, out.map((o) => o.json));
         return [out];
     }
 }

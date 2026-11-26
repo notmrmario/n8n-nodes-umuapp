@@ -10,6 +10,7 @@ import { decodeDeep, EventType, formatUmQuery, normalizeTask, toIsoMadrid } from
 import { getEndpoint } from './login';
 import { normalizeSakaiAnnouncement, sakaiList } from './sakai';
 import { fetchAvExams } from './exams';
+import { enrichSiteTitles } from './sites';
 import { compareTasks, fetchAllTasks, StoredTask, taskKey } from './tasks';
 import { Alert, CalendarEvent } from './types';
 import { aulaGet, getWebSession } from './webview';
@@ -423,6 +424,7 @@ export class UmuappTrigger implements INodeType {
             // Prueba manual: devolvemos lo más reciente para poder ver la estructura.
             const testItems = Math.max(1, Math.floor(Number(options.testItems ?? 5)) || 5);
             const sample = all.sort((a, b) => b.sortDate.localeCompare(a.sortDate)).slice(0, testItems);
+            await enrichSiteTitles(this, sample.map((c) => c.item));
             return sample.length ? [sample.map((c) => ({ json: decodeDeep(c.item) }))] : null;
         }
 
@@ -438,6 +440,7 @@ export class UmuappTrigger implements INodeType {
         const merged = [...toEmit.map((c) => ({ item: c.item, sortDate: c.sortDate })), ...taskExtra];
         if (!merged.length) return null;
         merged.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+        await enrichSiteTitles(this, merged.map((c) => c.item));
         return [merged.map((c) => ({ json: decodeDeep(c.item) }))];
     }
 }

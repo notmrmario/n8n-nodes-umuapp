@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0
+
+- **Corrección:** `sitioTitulo` salía siempre como «Mi Sitio» en los anuncios (y en el calendario no existía): Sakai devuelve ahí el título del sitio «actual» de la sesión, no el del sitio del anuncio. Ahora el título se toma de `/direct/site/{id}.json`, una consulta por sitio distinto (se recuerda una hora), tanto en el nodo como en el trigger. Los eventos del calendario de Aula Virtual también llevan `sitioTitulo`. Si la consulta falla, el elemento queda como estaba. El `raw` no se toca.
+- **Nuevo recurso «Sitio (Aula Virtual)» → Get:** datos de un sitio a partir de su ID o de cualquier URL del sitio (`…/portal/site/{id}/…`). Devuelve título, tipo, descripción (HTML y texto), publicado, fechas, propietario, contacto, URL y el objeto original; opcionalmente las páginas y herramientas (`/pages.json`) y los grupos.
+
 ## 0.7.0
 
 - **Examen (Aula Virtual)** consulta solo «Tests y cuestionarios» (`sam_pub`): cada cosa se clasifica según donde sale en el Aula Virtual. Las tareas siguen en «Tarea» y los eventos en «Calendario (Aula Virtual)».
