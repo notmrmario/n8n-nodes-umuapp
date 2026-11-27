@@ -145,33 +145,31 @@ export function clearSiteTitleCache(): void {
 }
 
 // ---------------------------------------------------------------------------
-// URL de un anuncio
+// Referencia web (enlace directo) de anuncios, tareas, exámenes y eventos del calendario
 // ---------------------------------------------------------------------------
 
-const placementCache = new Map<string, { placement: string; at: number }>();
+/** Herramientas de un sitio: `toolId` → id de colocación. Es distinto en cada sitio y sale de `pages.json`. */
+const placementCache = new Map<string, { tools: Record<string, string>; at: number }>();
 
-/** Id de la herramienta «Anuncios» (`sakai.announcements`) de un sitio: es distinto en cada sitio. */
-async function announcementPlacement(ctx: Ctx, base: string, site: string): Promise<string> {
+async function sitePlacements(ctx: Ctx, base: string, site: string): Promise<Record<string, string>> {
     const key = `${base}|${site}`;
     const hit = placementCache.get(key);
-    if (hit && Date.now() - hit.at < TITLE_TTL_MS) return hit.placement;
-    let placement = '';
+    if (hit && Date.now() - hit.at < TITLE_TTL_MS) return hit.tools;
+    const tools: Record<string, string> = {};
     try {
         const r = await aulaGet(ctx, `/direct/site/${encodeURIComponent(site)}/pages.json`);
         if (r.isJson && r.statusCode < 400 && Array.isArray(r.data)) {
             for (const page of r.data as IDataObject[]) {
-                const tool = (Array.isArray(page.tools) ? (page.tools as IDataObject[]) : []).find((t) => t.toolId === 'sakai.announcements');
-                if (tool && typeof tool.placementId === 'string') {
-                    placement = tool.placementId;
-                    break;
+                for (const t of Array.isArray(page.tools) ? (page.tools as IDataObject[]) : []) {
+                    if (typeof t.toolId === 'string' && typeof t.placementId === 'string') tools[t.toolId] ??= t.placementId;
                 }
             }
         }
     } catch {
-        // sin URL de anuncio, pero la salida sigue igual
+        // sin referencia web, pero la salida sigue igual
     }
-    placementCache.set(key, { placement, at: Date.now() });
-    return placement;
+    placementCache.set(key, { tools, at: Date.now() });
+    return tools;
 }
 
 /** Referencia `/announcement/msg/{sitio}/{canal}/{id}` a partir de los campos de un anuncio. */
@@ -184,12 +182,54 @@ export function announcementReference(item: IDataObject): string {
     return `/announcement/msg/${site}/${String(item.canal || 'main')}/${msg}`;
 }
 
+type WebKind = 'announcement' | 'task' | 'exam' | 'calendar';
+
+function webKind(i: IDataObject): WebKind | undefined {
+    if (typeof i.sitio !== 'string' || !i.sitio) return undefined;
+    if (i.evento === 'announcementAv' && i.id) return 'announcement';
+    if (i.evento === 'examAv') return 'exam';
+    if (i.evento === 'calendarEventAv' && i.id) return 'calendar';
+    // Tareas de Sakai (`aulavirtual`) y las que da la API de UMUApp (`tareas`, con el id de la tarea de Sakai).
+    if ((i.evento === 'task' || i.evento === 'taskChanged') && (i.fuente === 'aulavirtual' || i.fuente === 'tareas') && i.id) return 'task';
+    return undefined;
+}
+
+/** Referencia web de un elemento, dados los ids de herramienta de su sitio. `undefined` si no se puede construir. */
+export function buildWebReference(item: IDataObject, kind: WebKind, base: string, tools: Record<string, string>): string | undefined {
+    const site = String(item.sitio);
+    const enc = encodeURIComponent;
+    switch (kind) {
+        case 'announcement': {
+            const p = tools['sakai.announcements'];
+            return p ? `${base}/portal/directtool/${p}?itemReference=${announcementReference(item)}&sakai_action=doShowmetadata` : undefined;
+        }
+        case 'task': {
+            const p = tools['sakai.assignment.grades'] ?? tools['sakai.assignment'];
+            return p
+                ? `${base}/portal/directtool/${p}?assignmentId=/assignment/a/${site}/${enc(String(item.id))}&panel=Main&sakai_action=doGrade_assignment`
+                : undefined;
+        }
+        case 'exam': {
+            // Como en las alertas de examen: la herramienta «Exámenes» del sitio (no hay enlace directo a una evaluación).
+            const p = tools['sakai.samigo'];
+            return p ? `${base}/portal/site/${enc(site)}/tool/${p}` : undefined;
+        }
+        case 'calendar': {
+            const p = tools['sakai.schedule'];
+            return p
+                ? `${base}/portal/directtool/${p}?eventReference=/calendar/event/${site}/main/${enc(String(item.id))}&panel=Main&sakai_action=doDescription`
+                : undefined;
+        }
+    }
+}
+
 /**
- * Añade `urlAnuncio` (enlace directo al anuncio en el Aula Virtual) a los anuncios. Hace falta el id de la herramienta
- * «Anuncios» del sitio, que se consulta una vez por sitio (`pages.json`) y se recuerda una hora. Sin él, `urlAnuncio` es null.
+ * Añade `referenciaWeb` (enlace directo en el Aula Virtual) a los anuncios, tareas, exámenes y eventos del calendario
+ * (los anuncios llevan además `urlAnuncio`, igual). Hace falta el id de la herramienta de cada tipo en el sitio: se consulta
+ * `pages.json` una vez por sitio y se recuerda una hora. Si no se puede construir, `referenciaWeb` es null y sigue valiendo `urlSitio`.
  */
-export async function enrichAnnouncementUrls(ctx: Ctx, items: IDataObject[]): Promise<void> {
-    const wanted = items.filter((i) => i.evento === 'announcementAv' && typeof i.sitio === 'string' && i.sitio && i.id);
+export async function enrichWebReferences(ctx: Ctx, items: IDataObject[]): Promise<void> {
+    const wanted = items.map((i) => ({ i, kind: webKind(i) })).filter((x): x is { i: IDataObject; kind: WebKind } => x.kind !== undefined);
     if (!wanted.length) return;
     let base: string;
     try {
@@ -197,12 +237,12 @@ export async function enrichAnnouncementUrls(ctx: Ctx, items: IDataObject[]): Pr
     } catch {
         return;
     }
-    for (const site of new Set(wanted.map((i) => i.sitio as string))) {
-        const placement = await announcementPlacement(ctx, base, site);
-        for (const i of wanted.filter((w) => w.sitio === site)) {
-            i.urlAnuncio = placement
-                ? `${base}/portal/directtool/${placement}?itemReference=${announcementReference(i)}&sakai_action=doShowmetadata`
-                : null;
+    for (const site of new Set(wanted.map((w) => w.i.sitio as string))) {
+        const tools = await sitePlacements(ctx, base, site);
+        for (const { i, kind } of wanted.filter((w) => w.i.sitio === site)) {
+            const url = buildWebReference(i, kind, base, tools) ?? null;
+            i.referenciaWeb = url;
+            if (kind === 'announcement') i.urlAnuncio = url;
         }
     }
 }

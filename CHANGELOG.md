@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0
+
+- **Referencia web de los eventos de Aula Virtual** (nodo y trigger): campo `referenciaWeb` con el enlace directo en el Aula Virtual, y los anuncios mantienen `urlAnuncio` con el mismo valor.
+  - Anuncio: `…/portal/directtool/{Anuncios}?itemReference=/announcement/msg/{sitio}/{canal}/{id}&sakai_action=doShowmetadata`
+  - Tarea (también las tareas y cambios del trigger): `…/portal/directtool/{Tareas}?assignmentId=/assignment/a/{sitio}/{id}&panel=Main&sakai_action=doGrade_assignment`, como en las alertas.
+  - Examen: `…/portal/site/{sitio}/tool/{Exámenes}`, como en las alertas (Samigo no tiene enlace directo a una evaluación).
+  - Evento del calendario: `…/portal/directtool/{Calendario}?eventReference=/calendar/event/{sitio}/main/{id}&panel=Main&sakai_action=doDescription` (formato estándar de Sakai, sin comprobar en la UM).
+  - El id de cada herramienta es distinto en cada sitio: se obtiene de `pages.json`, una consulta por sitio para todos los tipos (se recuerda una hora). Si no se puede construir, `referenciaWeb` es null.
+
 ## 0.9.0
 
 Hecho a partir de la salida real de varios endpoints del Aula Virtual de la UM:

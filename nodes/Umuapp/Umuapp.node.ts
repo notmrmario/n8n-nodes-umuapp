@@ -15,7 +15,7 @@ import {
     sakaiList,
 } from "./sakai";
 import { aulaGet, getWebSession } from "./webview";
-import { enrichAnnouncementUrls, enrichSiteTitles, fetchSite, normalizeSakaiSite, parseSiteRef } from "./sites";
+import { enrichWebReferences, enrichSiteTitles, fetchSite, normalizeSakaiSite, parseSiteRef } from "./sites";
 import { fetchAvExamByRef, fetchAvExams } from "./exams";
 
 export class Umuapp implements INodeType {
@@ -894,7 +894,7 @@ export class Umuapp implements INodeType {
 
         // Título real del sitio en anuncios y eventos (la API devuelve «Mi Sitio»).
         await enrichSiteTitles(this, out.map((o) => o.json));
-        await enrichAnnouncementUrls(this, out.map((o) => o.json));
+        await enrichWebReferences(this, out.map((o) => o.json));
         return [out];
     }
 }
